@@ -83,6 +83,9 @@
 #include <curses.h>
 #endif
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 /* defined in <term.h> but without const */
 char *tgetstr(const char *id, char **area);
 char *tgoto(const char *cap, int col, int row);
@@ -741,16 +744,16 @@ static void print_tree(struct window *win, int row, struct iter *iter)
 	}
 
 	print_buffer[0] = ' ';
+	int buffer_len = MIN(tree_win_w - 2, sizeof(print_buffer));
 	if (album) {
 		fill_track_fopts_album(album);
-		format_print(print_buffer + 1, tree_win_w - 2, tree_win_format, track_fopts);
+		format_print(print_buffer + 1, buffer_len, tree_win_format, track_fopts);
 	} else {
 		fill_track_fopts_artist(artist);
-		format_print(print_buffer + 1, tree_win_w - 2, tree_win_artist_format, track_fopts);
+		format_print(print_buffer + 1, buffer_len, tree_win_artist_format, track_fopts);
 	}
 	pos = strlen(print_buffer);
-	print_buffer[pos++] = ' ';
-	print_buffer[pos++] = 0;
+	print_buffer[pos++] = ' '; print_buffer[pos++] = 0;
 	dump_print_buffer(row + 1, tree_win_x);
 }
 
@@ -766,6 +769,7 @@ static void print_track(struct window *win, int row, struct iter *iter)
 	track = iter_to_tree_track(iter);
 	album = iter_to_album(iter);
 
+	int buffer_len = MIN(track_win_w, sizeof(print_buffer));
 	if (track == (struct tree_track*)album) {
 		int pos;
 		struct fp_len len;
@@ -774,7 +778,7 @@ static void print_track(struct window *win, int row, struct iter *iter)
 
 		fill_track_fopts_album(album);
 
-		len = format_print(print_buffer, track_win_w, track_win_album_format, track_fopts);
+		len = format_print(print_buffer, buffer_len, track_win_album_format, track_fopts);
 		dump_print_buffer(row + 1, track_win_x);
 
 		bkgdset(pairs[CURSED_SEPARATOR]);
@@ -805,7 +809,7 @@ static void print_track(struct window *win, int row, struct iter *iter)
 	} else if (*track_win_alt_format) {
 		format = track_win_alt_format;
 	}
-	format_print(print_buffer, track_win_w, format, track_fopts);
+	format_print(print_buffer, buffer_len, format, track_fopts);
 	dump_print_buffer(row + 1, track_win_x);
 }
 
@@ -878,10 +882,11 @@ static void print_browser(struct window *win, int row, struct iter *iter)
 	}
 
 	/* file name encoding == terminal encoding. no need to convert */
+	int buffer_len = MIN(COLS,sizeof(print_buffer) - 1);
 	if (using_utf8) {
-		sprint(row + 1, 0, e->name, COLS);
+		sprint(row + 1, 0, e->name, buffer_len);
 	} else {
-		sprint_ascii(row + 1, 0, e->name, COLS);
+		sprint_ascii(row + 1, 0, e->name, buffer_len);
 	}
 }
 
@@ -985,11 +990,13 @@ static void update_window(struct window *win, int x, int y, int w, const char *t
 	win->changed = 0;
 
 	bkgdset(pairs[CURSED_WIN_TITLE]);
-	c = snprintf(print_buffer, w + 1, " %s", title);
+	int buffer_len = MIN(w, sizeof(print_buffer) - 1);
+	c = snprintf(print_buffer, buffer_len + 1, " %s", title);
 	if (c > w)
 		c = w;
-	memset(print_buffer + c, ' ', w - c + 1);
-	print_buffer[w] = 0;
+	if (c < buffer_len)
+		memset(print_buffer + c, ' ', buffer_len - c + 1);
+	print_buffer[buffer_len] = 0;
 	dump_print_buffer(y, x);
 	nr_rows = window_get_nr_rows(win);
 	i = 0;
@@ -1003,8 +1010,8 @@ static void update_window(struct window *win, int x, int y, int w, const char *t
 	}
 
 	bkgdset(pairs[0]);
-	memset(print_buffer, ' ', w);
-	print_buffer[w] = 0;
+	memset(print_buffer, ' ', buffer_len);
+	print_buffer[buffer_len] = 0;
 	while (i < nr_rows) {
 		dump_print_buffer(y + i + 1, x);
 		i++;
@@ -1023,7 +1030,8 @@ static void update_track_window(void)
 
 	/* it doesn't matter what format options we use because the format
 	 * string does not contain any format charaters */
-	format_print(title, track_win_w - 2, "Track%=Library", track_fopts);
+	int buffer_len = MIN(track_win_x - 2, sizeof(title));
+	format_print(title, buffer_len, "Track%=Library", track_fopts);
 	update_window(lib_track_win, track_win_x, 0, track_win_w, title,
 			print_track);
 }
@@ -1066,7 +1074,8 @@ static void update_pl_tracks(struct window *win)
 	get_global_fopts();
 	fopt_set_time(&track_fopts[TF_TOTAL], pl_visible_total_time(), 0);
 
-	format_print(title, track_win_w - 2, "Track%=%{total}", track_fopts);
+	int buffer_len = MIN(track_win_x, sizeof(title));
+	format_print(title, buffer_len, "Track%=%{total}", track_fopts);
 	update_window(win, track_win_x, 0, track_win_w, title, print_editable);
 
 	editable_active = 1;
@@ -1216,7 +1225,8 @@ static void do_update_view(int full)
 
 static void do_update_statusline(void)
 {
-	format_print(print_buffer, COLS, statusline_format, get_global_fopts());
+	int buffer_len = MIN(COLS,sizeof(print_buffer) - 1);
+	format_print(print_buffer, buffer_len, statusline_format, get_global_fopts());
 	bkgdset(pairs[CURSED_STATUSLINE]);
 	dump_print_buffer(LINES - 2, 0);
 
@@ -1369,10 +1379,11 @@ static void do_update_titleline(void)
 			}
 		}
 
+		int buffer_len = MIN(COLS,sizeof(print_buffer));
 		if (use_alt_format && *current_alt_format) {
-			format_print(print_buffer, COLS, current_alt_format, track_fopts);
+			format_print(print_buffer, buffer_len, current_alt_format, track_fopts);
 		} else {
-			format_print(print_buffer, COLS, current_format, track_fopts);
+			format_print(print_buffer, buffer_len, current_format, track_fopts);
 		}
 		dump_print_buffer(LINES - 3, 0);
 
